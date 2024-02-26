@@ -1,63 +1,63 @@
 EStoVideoMem	macro
 
-				push 0b800h
-				pop es
+		push 0b800h
+		pop es
 
-				endm
+		endm
 
 GetButtFromKbrd	macro
 
-				in al, 60h
+		in al, 60h
 
-				endm
+		endm
 
-JmpFar			macro
+JmpFar		macro
 
-				db 0EAh
+		db 0EAh
 
-				endm
+		endm
 
 
-ReplaceByte		macro
+ReplaceByte	macro
 
-				lea dx, HEX_alph
-				add dl, bh
+		lea dx, HEX_alph
+		add dl, bh
 
-				mov si, dx
-				mov di, cx
-				movsb
+		mov si, dx
+		mov di, cx
+		movsb
 
-				inc cx
+		inc cx
 
-				lea dx, HEX_alph
-				add dl, bl
+		lea dx, HEX_alph
+		add dl, bl
 
-				mov si, dx
-				mov di, cx
-				movsb
+		mov si, dx
+		mov di, cx
+		movsb
 
-				endm
+		endm
 
 ChangeIntVector macro num
 
-				mov ax, 35&num&h			; change 08 int vector
-				int 21h
+		mov ax, 35&num&h			; change 08 int vector
+		int 21h
 
-				mov Old&num&ofs, bx
-				mov bx, es
-				mov Old&num&seg, bx
-				push 0
-				pop es
-				mov bx, 4 * &num&h
+		mov Old&num&ofs, bx
+		mov bx, es
+		mov Old&num&seg, bx
+		push 0
+		pop es
+		mov bx, 4 * &num&h
 
-				cli
+		cli
 
-				mov es:[bx], offset New&num
-				push cs
-				pop ax
+		mov es:[bx], offset New&num
+		push cs
+		pop ax
 
-				mov es:[bx + 2], ax
+		mov es:[bx + 2], ax
 
-				sti
+		sti
 
-				endm
+		endm
