@@ -35,12 +35,6 @@ Start:
 		include strtonum.asm
 
 main:
-		mov ax, 1234h
-		lea cx, RegArray
-		add cx, 4
-		call WriteRegToVar
-
-
 		mov ax, 3509h		; change 09 int vector
 		int 21h
 
@@ -261,16 +255,16 @@ WriteRegToVar	proc
 ;-------------------------------------------------------------------------------
 ; Write registers to frame
 ; Entry:
-;	 STACK[0] - AX
-;	 STACK[1] - BX
-;	 STACK[2] - CX
-;	 STACK[3] - DX
-;	 STACK[4] - SI
-;	 STACK[5] - DI
-;	 STACK[6] - BP
-;	 STACK[7] - SP
-;	 STACK[8] - DS
-;	 STACK[9] - ES
+;	 STACK[0]  - AX
+;	 STACK[1]  - BX
+;	 STACK[2]  - CX
+;	 STACK[3]  - DX
+;	 STACK[4]  - SI
+;	 STACK[5]  - DI
+;	 STACK[6]  - BP
+;	 STACK[7]  - SP
+;	 STACK[8]  - DS
+;	 STACK[9]  - ES
 ;	 STACK[10] - SS
 ;	 STACK[11] - IP
 ;	 STACK[12] - CS
@@ -339,12 +333,14 @@ WriteStrVarToFrame	proc
 			pop bx ax si
 
 			ret
+
 @@while_body:
 			mov es:[bx], ax
 
 			inc cx
 			add bx, 2
 			jmp @@while_cond
+
 			endp
 
 ;-------------------------------------------------------------------------------
