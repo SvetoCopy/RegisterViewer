@@ -5,14 +5,17 @@ org 100h
 
 RegStrLen			equ 9d
 
+NumLockScanCode		equ 45h
+InsertScanCode		equ 52h
+
 FnMaxHeight			equ 24D
 FnMaxWidth			equ 80d
 
-FnHeight 			equ 10d
-FnWidth				equ 50d
+FnHeight 			equ 15d
+FnWidth				equ 12d
 FnLineSize			equ 160d
-FnLeftCornerX		equ 30d
-FnLeftCornerY		equ 0d
+FnLeftCornerX		equ 42d
+FnLeftCornerY		equ 6d
 
 FnStarSym			equ 2ah
 FnStandartSet1_code equ 31h
@@ -22,9 +25,22 @@ FnStandartSet3_code equ 33h
 FnSetSize			equ 9d
 
 FnCMDArgsAddr		equ 80h
+FnColor				equ 30h
 
 LOCALS @@
 Start:
+		jmp main
+
+		include marcos.asm
+		include strtonum.asm
+
+main:
+		mov ax, 1234h
+		lea cx, RegArray
+		add cx, 4
+		call WriteRegToVar
+
+
 		mov ax, 3509h		; change 09 int vector
 		int 21h
 
@@ -77,115 +93,109 @@ EndSym			db '$'
 StandartSet1	db '/-\| |\-/'
 Header_name		db 'Hello!$'
 
+cs_str      db 'CS: 0000$'
+
 is_pressed		db 0
 
 HEX_alph		db '0123456789ABCDEF'
 
-AX_str			db 'AX: 0000$'
-BX_str			db 'BX: 0000$'
-CX_str			db 'CX: 0000$'
-DX_str			db 'DX: 0000$'
-SI_str			db 'SI: 0000$'
-DI_str			db 'DI: 0000$'
-BP_str			db 'BP: 0000$'
-SP_str			db 'SP: 0000$'
-DS_str			db 'DS: 0000$'
-ES_str			db 'ES: 0000$'
+RegArray		db 'AX: 0000$'
+				db 'BX: 0000$'
+				db 'CX: 0000$'
+				db 'DX: 0000$'
+				db 'SI: 0000$'
+				db 'DI: 0000$'
+				db 'BP: 0000$'
+				db 'SP: 0000$'
+				db 'DS: 0000$'
+				db 'ES: 0000$'
+				db 'SS: 0000$'
+				db 'IP: 0000$'
+				db 'CS: 0000$'
 
-ChangeIntVector macro num
-
-				mov ax, 35&num&h			; change 08 int vector
-				int 21h
-
-				mov Old&num&ofs, bx
-				mov bx, es
-				mov Old&num&seg, bx
-				push 0
-				pop es
-				mov bx, 4 * &num&h
-
-				cli
-
-				mov es:[bx], offset New&num
-				push cs
-				pop ax
-
-				mov es:[bx + 2], ax
-
-				sti
-
-				endm
 
 New09	proc
 
 		push ds bp di si cx dx ax bx es
 
-		in al, 60h
-		cmp al, 52h
-		jne @@go_out		; if (button != insert) go_out
-
 		push cs
 		pop ds
 
-		lea bx, is_pressed	; is_pressed = true
+		GetButtFromKbrd
+
+		mov ch, InsertScanCode
+		mov bh, 80h
+		or ch, bh
+
+		cmp al, ch
+		je @@viewer_on				; if (button == insert) @@viewer_on
+
+		mov ch, NumLockScanCode
+		mov bh, 80h
+		or ch, bh
+
+		cmp al, ch
+		je @@viewer_off				; if (button == NumLock) @@viewer_off
+
+		jmp @@go_out
+
+@@viewer_off:
+		lea bx, is_pressed			; is_pressed = false
+		push ds
+		pop es
+		mov byte ptr es:[bx], 0h
+		jmp @@go_out
+
+@@viewer_on:
+		lea bx, is_pressed			; is_pressed = true
 		push ds
 		pop es
 		mov byte ptr es:[bx], 1h
 
 @@go_out:
 		pop es bx ax dx cx si di bp ds
-		db 0EAh
+
+		JmpFar
 
 Old09ofs	dw 0
 Old09seg	dw 0
 
 		iret
-
 endp
 
 New08	proc
-
-		push ds bp di si cx dx ax bx es
+		push ss es ds sp bp di si dx cx bx ax	; calling WriteReg
 
 		push cs
 		pop ds
 
-		cmp is_pressed, 1h
+		cmp is_pressed, 1h			; if (is_pressed == true) go_out
 		jne @@go_out
 
-		push 0b800h
-		pop es
+		EStoVideoMem
 
-		lea bx, StandartSet1
+		lea bx, StandartSet1		; push stack[1] arg
 		push bx
 
-		lea bx, Header_name
+		lea bx, Header_name			; push stack[0] arg
 		push bx
 
-		mov bx, (80 * 5 + 40) * 2
-		mov ch, 12d
-		mov dx, 12d
-		mov ah, 4eh
+		mov bx, FnLeftCornerX * 2 + FnLeftCornerY * FnLineSize
+		mov ch, FnHeight
+		mov dx, FnWidth
+		mov ah, FnColor
 
 		Call WriteFrame
 
-		pop es bx ax dx cx si di bp ds
-		push ds bp di si cx dx ax bx es
-
-		push es ds sp bp di si dx cx bx ax	; calling WriteReg
-
-		push cs
-		pop ds
-
-		push 0b800h
-		pop es
-		mov ah, 24h
+		EStoVideoMem
+		mov ah, FnColor
 
 		call WriteReg
 
 @@go_out:
-		pop es bx ax dx cx si di bp ds
-		db 0EAh
+		pop ax bx cx dx si di bp sp ds es ss
+
+		JmpFar
 
 Old08ofs	dw 0
 Old08seg	dw 0
@@ -195,80 +205,58 @@ Old08seg	dw 0
 endp
 
 ;-------------------------------------------------------------------------------
+; Split byte-reg, like this AB ->0A0B
+; Entry:
+;	 BH - byte-reg
+; Return:
+; 	 BX - splitted reg
+; Assumes:
+;	 ES = 0b800h
+; Destr: DX
+;
+;-------------------------------------------------------------------------------
+SplitByteReg	proc
+
+				mov bl, bh	; 0A
+				shr bh, 4
+
+				shl bl, 4	; 0B
+				shr bl, 4
+
+				ret
+				endp
+
+;-------------------------------------------------------------------------------
 ; Write str value to var from reg
 ; Entry:
 ;	 AX - reg_value
 ; 	 CX - str address
 ; Assumes:
 ;	 ES = 0b800h
-; Destr:
+; Destr: CX
 ;
 ;-------------------------------------------------------------------------------
 WriteRegToVar	proc
-			push bx dx si di es
 
-			mov bx, ax		; bx = ABCDh
+				push bx dx si di es
 
-			shr bh, 4			; Write(0A)
+				push ds
+				pop es
 
-			lea dx, HEX_alph
-			mov bl, bh
-			mov bh, 0
-			add dx, bx
+				mov bx, ax			; Write ah
+				call SplitByteReg
+				ReplaceByte
 
-			push ds
-			pop es
-			mov si, dx
-			mov di, cx
-			movsb
+				inc cx
 
-			inc cx
+				mov bx, ax			; Write al
+				mov bh, bl
+				call SplitByteReg
+				ReplaceByte
 
-			mov bx, ax		; bx = ABCDh
-
-			shl bh, 4			; Write(0B)
-			shr bh, 4
-
-			lea dx, HEX_alph
-			mov bl, bh
-			mov bh, 0
-			add dx, bx
-
-			mov si, dx
-			mov di, cx
-			movsb
-
-			inc cx
-
-			mov bx, ax		; bx = ABCDh
-
-			shr bl, 4			; Write(0C)
-
-			lea dx, HEX_alph
-			mov bh, 0
-			add dx, bx
-
-			mov si, dx
-			mov di, cx
-			movsb
-
-			inc cx
-
-			mov bx, ax		; bx = ABCDh
-
-			shl bl, 4			; Write(0D)
-			shr bl, 4
-
-			lea dx, HEX_alph
-			mov bh, 0
-			add dx, bx
-			mov si, dx
-			mov di, cx
-			movsb
-
-			pop es di si dx bx
-			ret
-			endp
+				pop es di si dx bx
+				ret
+				endp
 
 ;-------------------------------------------------------------------------------
 ; Write registers to frame
@@ -283,41 +271,47 @@ WriteRegToVar	proc
 ;	 STACK[7] - SP
 ;	 STACK[8] - DS
 ;	 STACK[9] - ES
+;	 STACK[10] - SS
+;	 STACK[11] - IP
+;	 STACK[12] - CS
 ; Assumes:
 ;	 ES = 0b800h
 ; Destr: bx, cx
 ;
 ;-------------------------------------------------------------------------------
 WriteReg	proc
+
 			push bp
 			mov bp, sp
 
-			mov bx, (80 * 6 + 42) * 2
+			mov bx, (FnLeftCornerX + 2) * 2 + (FnLeftCornerY + 1) * FnLineSize
 			add bp, 4
 			mov dx, 0
-			lea cx, AX_str
+			lea cx, RegArray
 
 @@while_cond:
-			cmp dx, 10d
+			cmp dx, 13d
 			jl @@while_body
 
 			pop bp
-			ret 20
+			ret
 
 @@while_body:
-			mov ax, [bp]
-			add cx, 4
+			mov ax, [bp]			;  v   		 -->  	   v
+			add cx, 4				; 'AX: ABCD' -->  'AX: ABCD'
 
-			call WriteRegToVar
-			sub cx, 7
-			mov ah, 4eh
+			call WriteRegToVar		;     	  v	 -->   v
+			sub cx, 7				; 'AX: ABCD' -->  'AX: ABCD'
+			mov ah, FnColor
 
 			call WriteStrVarToFrame
 
 			add bx, FnLineSize
-			add cx, 1
+									;     	  v	 		   -->   		   v
+			add cx, 1				; 'AX: ABCD''BX: ABCD' -->  'AX: ABCD''BX: ABCD'
 			add bp, 2
 			inc dx
+
 			jmp @@while_cond
 
 			endp
@@ -335,6 +329,7 @@ WriteReg	proc
 WriteStrVarToFrame	proc
 
 			push si ax bx
+
 @@while_cond:
 			mov si, cx
 			lodsb
@@ -364,7 +359,6 @@ WriteStrVarToFrame	proc
 ; Assumes:
 ;	 ES = 0b800h
 ; Destr: AX, CX, BX, DX
-;
 ;-------------------------------------------------------------------------------
 WriteFrame	proc
 
@@ -646,7 +640,6 @@ StrLenBoxtext	proc
 
 			endp
 
-include strtonum.asm
 EOP:
 
 end 	Start
